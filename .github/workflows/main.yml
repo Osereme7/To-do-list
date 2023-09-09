@@ -12,17 +12,23 @@ jobs:
     - uses: actions/checkout@v2
 
     - name: Build the Docker image
-      run: docker build -t todoapp .
+      run: docker build -t todo-app .
 
     - name: Run tests
       run: |
-        docker run -w /app todoapp npm install jest
-        docker run -w /app todoapp npx jest
-
+        docker run -w /app todo-app npm install jest
+        docker run -w /app todo-app npx jest
 
     - name: Deploy to Docker Hub
       if: github.ref == 'refs/heads/main'
       run: |
         echo ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
-        docker tag my-app ${{ secrets.DOCKER_USERNAME }}/my-app
-        docker push ${{ secrets.DOCKER_USERNAME }}/my-app
+        docker tag todo-app ${{ secrets.DOCKER_USERNAME }}/todo-app
+        docker push ${{ secrets.DOCKER_USERNAME }}/todo-app
+
+    - name: Deploy to Nginx Container
+      run: |
+        docker stop todo-app || true
+        docker rm todo-app || true
+        docker run -d -p 80:80 --name todo-app ${{ secrets.DOCKER_USERNAME }}/todo-app:${{ github.sha }}
+      working-directory: ./home/ubuntu/To-do-list
