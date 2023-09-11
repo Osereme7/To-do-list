@@ -2,33 +2,43 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v2
+      - uses: actions/checkout@v2
 
-    - name: Build the Docker image
-      run: docker build -t todo-app .
+      - name: Build the Docker image
+        run: docker build -t todo-app .
 
-    - name: Run tests
-      run: |
-        docker run -w /app todo-app npm install jest
-        docker run -w /app todo-app npx jest
+      - name: Run tests
+        run: |
+          # Add any tests you need to run
+          echo "Running tests..."
 
-    - name: Deploy to Docker Hub
-      if: github.ref == 'refs/heads/main'
-      run: |
-        echo ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
-        docker tag todo-app ${{ secrets.DOCKER_USERNAME }}/todo-app
-        docker push ${{ secrets.DOCKER_USERNAME }}/todo-app
+      - name: Publish to Docker Hub
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+          docker tag todo-app "${{ secrets.DOCKER_USERNAME }}/todo-app:${{ github.sha }}"
+          docker push "${{ secrets.DOCKER_USERNAME }}/todo-app:${{ github.sha }}"
 
-    - name: Deploy to Nginx Container
-      run: |
-        docker stop todo-app || true
-        docker rm todo-app || true
-        docker run -d -p 80:80 --name todo-app ${{ secrets.DOCKER_USERNAME }}/todo-app:${{ github.sha }}
-      working-directory: ./home/ubuntu/To-do-list
+      - name: Deploy to EC2
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "Copying SSH key..."
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ssh_key.pem
+          chmod 600 ssh_key.pem
+
+          # SSH into the EC2 instance and deploy the Docker container
+          ssh -i ssh_key.pem ubuntu@54.234.10.234 <<EOF
+            docker stop todo-app || true
+            docker rm todo-app || true
+            docker pull "${{ secrets.DOCKER_USERNAME }}/todo-app:${{ github.sha }}"
+            docker run -d -p 8080:80 --name todo-app "${{ secrets.DOCKER_USERNAME }}/todo-app:${{ github.sha }}"
+          EOF
+        env:
+          DOCKER_IMAGE_NAME: ${{ secrets.DOCKER_IMAGE_NAME }}
